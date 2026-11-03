@@ -1,22 +1,16 @@
+
 "use strict";
 
-/* =========================================
-   MADRAZO FAMILY — OFFICIAL STORE
-   STORE LOGIC
-========================================= */
+// =====================================
+// MADRAZO FAMILY - STORE
+// =====================================
 
-/*
-    PRICES
-    Cocaine = 600$
-    Meth = 600$
-*/
-
+// PRODUCTS
 const PRODUCTS = {
     cocaine: {
         name: "Cocaine",
         price: 600
     },
-
     meth: {
         name: "Meth",
         price: 600
@@ -25,9 +19,12 @@ const PRODUCTS = {
 
 const MAX_QUANTITY = 1000;
 
-/* =========================================
-   ELEMENTS
-========================================= */
+// RENDER SERVER
+const API_URL = "https://mafia-pswe.onrender.com";
+
+// =====================================
+// ELEMENTS
+// =====================================
 
 const pages = {
     welcome: document.getElementById("welcomePage"),
@@ -60,85 +57,50 @@ const orderForm = document.getElementById("orderForm");
 const submitOrderBtn = document.getElementById("submitOrderBtn");
 const orderMessage = document.getElementById("orderMessage");
 
-/* =========================================
-   CART
-========================================= */
+// =====================================
+// CART
+// =====================================
 
 const cart = {
     cocaine: 0,
     meth: 0
 };
 
-/* =========================================
-   HELPERS
-========================================= */
+// =====================================
+// HELPERS
+// =====================================
 
 function formatPrice(amount) {
     return new Intl.NumberFormat("en-US").format(amount) + "$";
 }
 
-function getQuantity(productId) {
-    return cart[productId] || 0;
-}
-
 function getTotalItems() {
-    return Object.values(cart).reduce((sum, quantity) => {
-        return sum + quantity;
-    }, 0);
+    return Object.values(cart).reduce((sum, quantity) => sum + quantity, 0);
 }
 
 function getSubtotal() {
-    let total = 0;
-
-    for (const [productId, quantity] of Object.entries(cart)) {
-        const product = PRODUCTS[productId];
-
-        if (product.price !== null) {
-            total += product.price * quantity;
-        }
-    }
-
-    return total;
-}
-
-function hasUnpricedItems() {
-    return Object.entries(cart).some(([productId, quantity]) => {
-        return quantity > 0 && PRODUCTS[productId].price === null;
-    });
-}
-
-function getPricedItemsTotal() {
-    return getSubtotal();
+    return Object.entries(cart).reduce((total, [id, quantity]) => {
+        return total + PRODUCTS[id].price * quantity;
+    }, 0);
 }
 
 function getOrderDetails() {
     return Object.entries(cart)
-        .filter(([productId, quantity]) => quantity > 0)
-        .map(([productId, quantity]) => {
-            const product = PRODUCTS[productId];
-
-            return {
-                id: productId,
-                name: product.name,
-                quantity,
-                unitPrice: product.price,
-                subtotal: product.price === null
-                    ? null
-                    : product.price * quantity
-            };
-        });
+        .filter(([id, quantity]) => quantity > 0)
+        .map(([id, quantity]) => ({
+            id: id,
+            quantity: quantity
+        }));
 }
-
-/* =========================================
-   PAGE NAVIGATION
-========================================= */
 
 function showPage(pageName) {
     Object.values(pages).forEach(page => {
-        page.classList.remove("active");
+        if (page) page.classList.remove("active");
     });
 
-    pages[pageName].classList.add("active");
+    if (pages[pageName]) {
+        pages[pageName].classList.add("active");
+    }
 
     window.scrollTo({
         top: 0,
@@ -146,36 +108,32 @@ function showPage(pageName) {
     });
 }
 
-/* =========================================
-   MUSIC
-========================================= */
+// =====================================
+// MUSIC
+// =====================================
 
 let musicStarted = false;
 
 async function startMusic() {
     try {
         backgroundMusic.volume = 0.35;
-
         await backgroundMusic.play();
 
         musicStarted = true;
         updateMusicButton();
     } catch (error) {
-        console.warn("Music could not start:", error);
-
-        musicToggle.hidden = false;
-        musicToggle.textContent = "▶ تشغيل الموسيقى";
+        console.log("Music error:", error);
     }
 }
 
 function updateMusicButton() {
+    if (!musicToggle || !backgroundMusic) return;
+
     musicToggle.hidden = false;
 
-    if (backgroundMusic.paused) {
-        musicToggle.textContent = "▶ تشغيل الموسيقى";
-    } else {
-        musicToggle.textContent = "🔊 إيقاف الموسيقى";
-    }
+    musicToggle.textContent = backgroundMusic.paused
+        ? "▶ تشغيل الموسيقى"
+        : "🔊 إيقاف الموسيقى";
 }
 
 enterStoreBtn.addEventListener("click", async () => {
@@ -195,164 +153,114 @@ musicToggle.addEventListener("click", async () => {
     }
 });
 
-/* =========================================
-   QUANTITY VALIDATION
-========================================= */
+// =====================================
+// QUANTITY
+// =====================================
 
-function normalizeQuantity(value) {
+function setQuantity(productId, value) {
+    if (!PRODUCTS[productId]) return;
+
     let quantity = Number.parseInt(value, 10);
 
     if (!Number.isFinite(quantity) || quantity < 0) {
         quantity = 0;
     }
 
-    if (quantity > MAX_QUANTITY) {
-        quantity = MAX_QUANTITY;
-    }
+    quantity = Math.min(quantity, MAX_QUANTITY);
 
-    return quantity;
-}
-
-function setQuantity(productId, quantity) {
-    if (!Object.prototype.hasOwnProperty.call(PRODUCTS, productId)) {
-        return;
-    }
-
-    cart[productId] = normalizeQuantity(quantity);
+    cart[productId] = quantity;
 
     const input = document.querySelector(
         `.quantity-input[data-product="${productId}"]`
     );
 
     if (input) {
-        input.value = cart[productId];
+        input.value = quantity;
     }
 
     updateStore();
 }
 
-/* =========================================
-   QUANTITY BUTTONS
-========================================= */
+// INCREASE AND DECREASE
 
 document.querySelectorAll(".quantity-btn").forEach(button => {
     button.addEventListener("click", () => {
-        const productId = button.dataset.product;
+        const id = button.dataset.product;
         const action = button.dataset.action;
 
-        if (!Object.prototype.hasOwnProperty.call(cart, productId)) {
-            return;
-        }
+        if (!PRODUCTS[id]) return;
 
-        let quantity = getQuantity(productId);
+        let quantity = cart[id];
 
-        if (action === "increase") {
-            quantity += 1;
-        }
+        if (action === "increase") quantity++;
+        if (action === "decrease") quantity--;
 
-        if (action === "decrease") {
-            quantity -= 1;
-        }
-
-        setQuantity(productId, quantity);
+        setQuantity(id, quantity);
     });
 });
 
-/* =========================================
-   MANUAL QUANTITY INPUT
-========================================= */
+// MANUAL INPUT
 
 document.querySelectorAll(".quantity-input").forEach(input => {
     input.addEventListener("input", () => {
-        const productId = input.dataset.product;
-
-        /*
-          Allow the input to be temporarily empty
-          while the customer is typing.
-        */
+        const id = input.dataset.product;
 
         if (input.value === "") {
-            cart[productId] = 0;
+            cart[id] = 0;
             updateStore();
             return;
         }
 
-        setQuantity(productId, input.value);
+        setQuantity(id, input.value);
     });
 
     input.addEventListener("blur", () => {
-        const productId = input.dataset.product;
-
-        setQuantity(productId, input.value);
+        setQuantity(input.dataset.product, input.value);
     });
 });
 
-/* =========================================
-   BUY PRODUCT BUTTONS
-========================================= */
+// BUY BUTTONS
 
 document.querySelectorAll(".buy-product-btn").forEach(button => {
     button.addEventListener("click", () => {
-        const productId = button.dataset.product;
-        const quantity = getQuantity(productId);
+        const id = button.dataset.product;
 
-        if (quantity < 1) {
-            alert("حدد كمية أكبر من 0 أولًا.");
+        if (!PRODUCTS[id]) return;
+
+        if (cart[id] < 1) {
+            alert("حدد الكمية أولاً.");
             return;
         }
 
-        if (PRODUCTS[productId].price === null) {
-            alert(
-                "سعر Meth لم يتم تحديده بعد. يمكنك اختياره لاحقًا."
-            );
-            return;
-        }
-
-        showPage("summary");
         renderSummary();
+        showPage("summary");
     });
 });
 
-/* =========================================
-   UPDATE STORE
-========================================= */
+// =====================================
+// UPDATE STORE
+// =====================================
 
 function updateStore() {
-    for (const productId of Object.keys(PRODUCTS)) {
-        const product = PRODUCTS[productId];
-        const quantity = getQuantity(productId);
-
-        const subtotalElement = document.getElementById(
-            `${productId}Subtotal`
-        );
+    Object.keys(PRODUCTS).forEach(id => {
+        const subtotalElement = document.getElementById(id + "Subtotal");
 
         if (subtotalElement) {
-            if (product.price === null && quantity > 0) {
-                subtotalElement.textContent = "غير محدد";
-            } else if (product.price === null) {
-                subtotalElement.textContent = "غير محدد";
-            } else {
-                subtotalElement.textContent = formatPrice(
-                    product.price * quantity
-                );
-            }
+            subtotalElement.textContent = formatPrice(
+                PRODUCTS[id].price * cart[id]
+            );
         }
-    }
+    });
 
     selectedItemsCount.textContent = getTotalItems();
-
-    if (hasUnpricedItems()) {
-        productsTotal.textContent = "غير مكتمل";
-    } else {
-        productsTotal.textContent = formatPrice(getPricedItemsTotal());
-    }
+    productsTotal.textContent = formatPrice(getSubtotal());
 
     updateFinalTotals();
 }
 
-/* =========================================
-   SUMMARY PAGE
-========================================= */
+// =====================================
+// SUMMARY
+// =====================================
 
 function renderSummary() {
     summaryProducts.replaceChildren();
@@ -360,73 +268,56 @@ function renderSummary() {
     const selectedProducts = getOrderDetails();
 
     if (selectedProducts.length === 0) {
-        const emptyMessage = document.createElement("p");
-
-        emptyMessage.textContent = "لم تختر أي منتجات بعد.";
-        emptyMessage.className = "empty-message";
-
-        summaryProducts.appendChild(emptyMessage);
+        const message = document.createElement("p");
+        message.textContent = "لم تختر أي منتجات بعد.";
+        summaryProducts.appendChild(message);
     }
 
     selectedProducts.forEach(item => {
+        const product = PRODUCTS[item.id];
+
         const card = document.createElement("article");
         card.className = "summary-product";
 
         const details = document.createElement("div");
 
         const title = document.createElement("h3");
-        title.textContent = item.name;
+        title.textContent = product.name;
 
         const quantity = document.createElement("p");
-        quantity.textContent = `الكمية: ${item.quantity}`;
+        quantity.textContent = "الكمية: " + item.quantity;
 
-        const unitPrice = document.createElement("p");
+        const price = document.createElement("p");
+        price.textContent = "سعر الوحدة: " + formatPrice(product.price);
 
-        unitPrice.textContent = item.unitPrice === null
-            ? "سعر الوحدة: غير محدد"
-            : `سعر الوحدة: ${formatPrice(item.unitPrice)}`;
-
-        details.append(title, quantity, unitPrice);
+        details.append(title, quantity, price);
 
         const subtotal = document.createElement("strong");
         subtotal.className = "summary-product-price";
-
-        subtotal.textContent = item.subtotal === null
-            ? "غير محدد"
-            : formatPrice(item.subtotal);
+        subtotal.textContent = formatPrice(product.price * item.quantity);
 
         card.append(details, subtotal);
         summaryProducts.appendChild(card);
     });
 
-    if (hasUnpricedItems()) {
-        summarySubtotal.textContent = "غير مكتمل";
-        summaryTotal.textContent = "غير مكتمل";
-    } else {
-        summarySubtotal.textContent = formatPrice(getSubtotal());
-        summaryTotal.textContent = formatPrice(getSubtotal());
-    }
+    summarySubtotal.textContent = formatPrice(getSubtotal());
+    summaryTotal.textContent = formatPrice(getSubtotal());
 
     updateFinalTotals();
 }
 
-/* =========================================
-   FINAL TOTALS
-========================================= */
+// =====================================
+// FINAL TOTAL
+// =====================================
 
 function updateFinalTotals() {
     finalItemsCount.textContent = getTotalItems();
-
-    if (hasUnpricedItems()) {
-        finalTotal.textContent = "غير مكتمل";
-    } else {
-        finalTotal.textContent = formatPrice(getSubtotal());
-    }
+    finalTotal.textContent = formatPrice(getSubtotal());
 }
 
-/* =========================================
-   NAVIGATION BUTTONS
-========================================= */
+// =====================================
+// NAVIGATION
+// =====================================
 
 backToWelcomeBtn.addEventListener("click", () => {
     showPage("welcome");
@@ -434,14 +325,7 @@ backToWelcomeBtn.addEventListener("click", () => {
 
 continueToSummaryBtn.addEventListener("click", () => {
     if (getTotalItems() === 0) {
-        alert("اختر منتجًا واحدًا على الأقل.");
-        return;
-    }
-
-    if (hasUnpricedItems()) {
-        alert(
-            "يوجد منتج لم يُحدد سعره بعد. احذف Meth من الطلب حتى يتم تحديد سعره."
-        );
+        alert("اختر منتجاً واحداً على الأقل.");
         return;
     }
 
@@ -459,13 +343,7 @@ continueToConfirmBtn.addEventListener("click", () => {
         return;
     }
 
-    if (hasUnpricedItems()) {
-        alert("لا يمكن تأكيد الطلب قبل تحديد سعر جميع المنتجات.");
-        return;
-    }
-
     renderSummary();
-    updateFinalTotals();
     showPage("confirm");
 });
 
@@ -474,23 +352,16 @@ backToSummaryBtn.addEventListener("click", () => {
     showPage("summary");
 });
 
-/* =========================================
-   ORDER SUBMISSION — RENDER SERVER
-========================================= */
-
-const API_URL = "https://madrazo-family.onrender.com";
+// =====================================
+// SEND ORDER TO DISCORD
+// =====================================
 
 orderForm.addEventListener("submit", async event => {
     event.preventDefault();
 
     if (getTotalItems() === 0) {
-        alert("اختر المنتجات أولًا.");
+        alert("اختر المنتجات أولاً.");
         showPage("products");
-        return;
-    }
-
-    if (hasUnpricedItems()) {
-        alert("يوجد منتج لم يتم تحديد سعره.");
         return;
     }
 
@@ -499,7 +370,7 @@ orderForm.addEventListener("submit", async event => {
     const deliveryLocation = document.getElementById("deliveryLocation").value.trim();
 
     if (!gangName) {
-        alert("اكتب اسم العصابة أو المافيا.");
+        alert("اكتب اسم العصابة.");
         return;
     }
 
@@ -507,17 +378,16 @@ orderForm.addEventListener("submit", async event => {
         gangName,
         radioNumber,
         deliveryLocation,
-        products: getOrderDetails(),
-        total: getSubtotal()
+        products: getOrderDetails()
     };
 
     submitOrderBtn.disabled = true;
     submitOrderBtn.textContent = "جارٍ إرسال الطلب...";
+
     orderMessage.textContent = "";
-    orderMessage.className = "order-message";
 
     try {
-        const response = await fetch(`${API_URL}/api/orders`, {
+        const response = await fetch(API_URL + "/api/orders", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"
@@ -525,28 +395,32 @@ orderForm.addEventListener("submit", async event => {
             body: JSON.stringify(order)
         });
 
-        const result = await response.json().catch(() => ({}));
+        const result = await response.json();
 
         if (!response.ok) {
-            throw new Error(result.message || "تعذر إرسال الطلب.");
+            throw new Error(result.message || "فشل إرسال الطلب.");
         }
 
         orderMessage.textContent = "تم إرسال الطلب بنجاح!";
-        orderMessage.classList.add("success");
+        orderMessage.className = "order-message success";
 
         submitOrderBtn.textContent = "تم إرسال الطلب ✓";
 
-        alert("تم إرسال طلبك بنجاح إلى الإدارة.");
+        alert("تم إرسال طلبك بنجاح!");
 
     } catch (error) {
-        console.error("Order submission failed:", error);
+        console.error("Order error:", error);
 
-        orderMessage.textContent =
-            "تعذر إرسال الطلب. حاول مرة أخرى.";
-
-        orderMessage.classList.add("error");
+        orderMessage.textContent = error.message;
+        orderMessage.className = "order-message error";
 
         submitOrderBtn.disabled = false;
-        submitOrderBtn.textContent = "إعادة محاولة إرسال الطلب";
+        submitOrderBtn.textContent = "إعادة إرسال الطلب";
     }
 });
+
+// =====================================
+// START
+// =====================================
+
+updateStore();
